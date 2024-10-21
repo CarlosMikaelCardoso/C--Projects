@@ -1,0 +1,62 @@
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// Defina os pinos e a rede
+#define ONE_WIRE_BUS 15
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+const char* ssid = "Redmi Note 12";
+const char* password = "10203040";
+const char* serverUrl = "http://192.168.1.215:5000/endpoint"; // URL do endpoint no Raspberry
+
+bool alertSent = false; // Variável para rastrear se um alerta foi enviado
+
+void setup() {
+  Serial.begin(115200);
+  sensors.begin();
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Conectando ao WiFi...");
+  }
+  Serial.println("Conectado ao WiFi!");
+}
+
+void loop() {
+  sensors.requestTemperatures();
+  float tempC = sensors.getTempCByIndex(0);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    String payload = "{\"temperature\": " + String(tempC) + "}";
+    int httpResponseCode = http.POST(payload);
+
+    if (httpResponseCode > 0) {
+      Serial.println("Dados enviados com sucesso: " + payload);
+    } else {
+      Serial.println("Erro ao enviar os dados");
+    }
+    http.end();
+  }
+
+  // Lógica para enviar alerta
+  if (tempC >= 30) {
+    if (!alertSent) {
+      Serial.println("Temperatura acima de 30°C! Enviando alerta.");
+      alertSent = true; // Marca que um alerta foi enviado
+    }
+  } else {
+    if (alertSent) {
+      Serial.println("Temperatura abaixo de 30°C! Enviando alerta.");
+      alertSent = false; // Reseta o estado quando a temperatura cai abaixo de 30°C
+    }
+  }
+
+  delay(10000); // Espera de 10 segundos entre leituras
+}
